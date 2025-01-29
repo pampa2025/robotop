@@ -4,10 +4,10 @@ import { Mesh } from 'three'
 import { useStore } from '../store'
 
 const Scene = () => {
-  cosole.log('scene init')
-  const meshRef = useRef<Mesh>(null)
-  const rotation = useStore((state) => state.rotation)
-  const setRotation = useStore((state) => state.setRotation)
+console.log('scene init')
+const meshRef = useRef<Mesh>(null)
+const rotation = useStore((state: { rotation: number }) => state.rotation)
+const setRotation = useStore((state: { setRotation: (rotation: number) => void }) => state.setRotation)
 
   useFrame(() => {
     if (meshRef.current) {
