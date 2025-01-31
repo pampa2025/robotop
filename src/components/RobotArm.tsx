@@ -5,7 +5,7 @@ Files: ./public/models/gilberto_a_robot_arm2.glb [585.86KB] > /Users/pampanie/de
 */
 
 import * as THREE from 'three';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useFrame, useGraph } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { GLTF, SkeletonUtils } from 'three-stdlib';
@@ -23,8 +23,10 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 	const { scene } = useGLTF('models/gilberto_a_robot_arm2-transformed.glb');
 	const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
 	const { nodes, materials } = useGraph(clone) as GLTFResult;
-	let testRotBoneName = 'J_Claw_Base_Rot_07';
-	let testRotBone: THREE.Bone | undefined;
+	const [targetPosition, setTargetPosition] = useState(
+		new THREE.Vector3(0, 0, 0)
+	);
+	const [bones, setBones] = useState<THREE.Bone[]>([]);
 
 	const setBoneLimits = (
 		bone: THREE.Bone,
@@ -35,10 +37,13 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 			max: limits.max,
 		};
 	};
+
 	useEffect(() => {
+		const collectedBones: THREE.Bone[] = [];
+
 		const traverseBones = (bone: THREE.Bone) => {
-			console.log('Bone name:', bone.name);
-			// Check if the bone has rotation limits metadata
+			collectedBones.push(bone);
+
 			if (bone.userData.rotationLimits) {
 				console.log(
 					'Rotation limits for',
@@ -46,11 +51,8 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 					':',
 					bone.userData.rotationLimits
 				);
-				console.log('Current local rotation:', bone.rotation);
 			}
-			if (bone.name === testRotBoneName) {
-				testRotBone = bone;
-			}
+
 			bone.children.forEach((child) => {
 				if (child instanceof THREE.Bone) {
 					traverseBones(child);
@@ -60,26 +62,70 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 
 		if (nodes._rootJoint) {
 			traverseBones(nodes._rootJoint);
+			setBones(collectedBones);
 		}
 	}, [nodes]);
 
-	//TODO Set rotation limits for a bone
-	useFrame((state, delta) => {
-		if (testRotBone) {
-			// before rotating the bone, check if it has rotation limits
-			if (testRotBone.userData.rotationLimits) {
-				const { min, max } = testRotBone.userData.rotationLimits;
-				const newRot = testRotBone.rotation.clone();
-				newRot.x += 0.01;
-				if (newRot.x < min.x || newRot.x > max.x) {
-					console.log('Rotation limit reached');
-					return;
+	const computeBoneRotations = () => {
+		const MAX_ITERATIONS = 10;
+		const TOLERANCE = 0.01;
+		const endEffector = bones[bones.length - 1];
+
+		for (let i = 0; i < MAX_ITERATIONS; i++) {
+			// Work backwards from end effector to root
+			for (let j = bones.length - 1; j >= 0; j--) {
+				const bone = bones[j];
+				const currentPosition = new THREE.Vector3();
+				endEffector.getWorldPosition(currentPosition);
+
+				const directionToTarget = targetPosition.clone().sub(currentPosition);
+				const directionToEndEffector = currentPosition
+					.clone()
+					.sub(bone.getWorldPosition(new THREE.Vector3()));
+
+				const axis = new THREE.Vector3()
+					.crossVectors(directionToEndEffector, directionToTarget)
+					.normalize();
+
+				const angle = directionToEndEffector.angleTo(directionToTarget);
+
+				// Apply rotation while respecting limits
+				if (bone.userData.rotationLimits) {
+					const { min, max } = bone.userData.rotationLimits;
+					const newRotation = bone.rotation.clone();
+					const rotationChange = new THREE.Vector3(
+						angle,
+						angle,
+						angle
+					).multiply(axis);
+					newRotation.set(
+						newRotation.x + rotationChange.x,
+						newRotation.y + rotationChange.y,
+						newRotation.z + rotationChange.z
+					);
+
+					// Clamp rotation to limits
+					newRotation.x = THREE.MathUtils.clamp(newRotation.x, min.x, max.x);
+					newRotation.y = THREE.MathUtils.clamp(newRotation.y, min.y, max.y);
+					newRotation.z = THREE.MathUtils.clamp(newRotation.z, min.z, max.z);
+
+					bone.rotation.copy(newRotation);
+				} else {
+					bone.rotateOnWorldAxis(axis, angle);
 				}
 			}
-			// Rotate the bone
 
-			testRotBone.rotateX(0.01);
+			// Check if we've reached the target
+			const currentEndPosition = new THREE.Vector3();
+			endEffector.getWorldPosition(currentEndPosition);
+			if (currentEndPosition.distanceTo(targetPosition) < TOLERANCE) {
+				break;
+			}
 		}
+	};
+
+	useFrame((_) => {
+		computeBoneRotations();
 	});
 
 	return (
