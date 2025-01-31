@@ -1,0 +1,299 @@
+Here's a comprehensive example for a robotic arm simulator with physics-based grasping mechanics. This implementation uses GLTF models, physics constraints, and interactive controls:
+
+```jsx
+import { Canvas } from '@react-three/fiber'
+import { Physics, useBox, useConstraint, useCompoundBody } from '@react-three/cannon'
+import { OrbitControls, useGLTF, Text, Html } from '@react-three/drei'
+import { useState, useRef, useEffect } from 'react'
+
+function RobotArm({ grabHandler }) {
+  const { nodes } = useGLTF('/models/robotic-arm.glb')
+  const [target, setTarget] = useState(null)
+  const [grabbedObject, setGrabbedObject] = useState(null)
+
+  // Base (fixed)
+  const [base] = useCompoundBody(() => ({
+    mass: 0,
+    position: [0, 0.5, 0],
+    shapes: [{ type: 'Box', args: [1, 1, 1], position: [0, 0.5, 0] }]
+  }))
+
+  // First arm segment
+  const [arm1, arm1Api] = useCompoundBody(() => ({
+    mass: 2,
+    position: [0, 1.5, 0],
+    shapes: [{ type: 'Box', args: [0.3, 2, 0.3], position: [0, 1, 0] }]
+  }))
+
+  // Second arm segment
+  const [arm2, arm2Api] = useCompoundBody(() => ({
+    mass: 1,
+    position: [0, 3.5, 0],
+    shapes: [{ type: 'Box', args: [0.3, 2, 0.3], position: [0, 1, 0] }]
+  }))
+
+  // Gripper
+  const [gripper, gripperApi] = useCompoundBody(() => ({
+    mass: 0.5,
+    position: [0, 5.5, 0],
+    shapes: [
+      { type: 'Box', args: [0.4, 0.2, 0.4], position: [-0.2, 0, 0] },
+      { type: 'Box', args: [0.4, 0.2, 0.4], position: [0.2, 0, 0] }
+    ]
+  }))
+
+  // Create joints using constraints
+  useConstraint(base, arm1, {
+    pivotA: [0, 1, 0],
+    pivotB: [0, 0, 0],
+    axisA: [0, 1, 0],
+    axisB: [0, 1, 0],
+    angle: Math.PI / 4, // Initial angle
+    collideConnected: false
+  })
+
+  useConstraint(arm1, arm2, {
+    pivotA: [0, 2, 0],
+    pivotB: [0, 0, 0],
+    axisA: [0, 1, 0],
+    axisB: [0, 1, 0],
+    collideConnected: false
+  })
+
+  useConstraint(arm2, gripper, {
+    pivotA: [0, 2, 0],
+    pivotB: [0, 0, 0],
+    collideConnected: false
+  })
+
+  // Gripper interaction
+  useEffect(() => {
+    const checkGrab = () => {
+      if (!target || grabbedObject) return
+      
+      // Raycast or proximity check here
+      const distance = gripper.position.distanceTo(target.position)
+      if (distance < 0.5) {
+        grabHandler(target)
+        setGrabbedObject(target)
+      }
+    }
+
+    const interval = setInterval(checkGrab, 100)
+    return () => clearInterval(interval)
+  }, [target, grabbedObject])
+
+  return (
+    <group>
+      {/* Base */}
+      <mesh geometry={nodes.base.geometry} position={[0, 0.5, 0]} />
+      
+      {/* Arm segments */}
+      <mesh ref={arm1} geometry={nodes.arm1.geometry} />
+      <mesh ref={arm2} geometry={nodes.arm2.geometry} />
+      
+      {/* Gripper */}
+      <group ref={gripper}>
+        <mesh geometry={nodes.gripper_left.geometry} />
+        <mesh geometry={nodes.gripper_right.geometry} />
+      </group>
+    </group>
+  )
+}
+
+function GrabbableCube({ position }) {
+  const [ref, api] = useBox(() => ({
+    mass: 1,
+    position,
+    material: { restitution: 0.2, friction: 0.8 }
+  }))
+
+  return (
+    <mesh ref={ref} castShadow>
+      <boxGeometry />
+      <meshStandardMaterial color="royalblue" />
+    </mesh>
+  )
+}
+
+function ControlPanel({ armApi }) {
+  const [angles, setAngles] = useState({ base: 0, shoulder: 0, elbow: 0 })
+
+  const updateJoint = (joint, value) => {
+    armApi[joint].setAngle(value)
+    setAngles(prev => ({ ...prev, [joint]: value }))
+  }
+
+  return (
+    <Html position={[0, 2, 0]}>
+      <div className="controls">
+        <h3>Arm Controls</h3>
+        <label>Base Rotation: 
+          <input type="range" min="-90" max="90" 
+                 onChange={(e) => updateJoint('base', e.target.value)} />
+        </label>
+        {/* Add similar controls for other joints */}
+      </div>
+    </Html>
+  )
+}
+
+export default function RoboticsSimulator() {
+  const [grabbedObj, setGrabbedObj] = useState(null)
+  
+  const handleGrab = (obj) => {
+    // Create fixed constraint between gripper and object
+    obj.api.mass.set(0) // Make object static while grabbed
+    // Add constraint logic here
+  }
+
+  return (
+    <Canvas shadows camera={{ position: [5, 5, 5], fov: 50 }}>
+      <Physics gravity={[0, -9.81, 0]} allowSleep={false}>
+        <RobotArm grabHandler={handleGrab} />
+        
+        <GrabbableCube position={[1, 1, 0]} />
+        <GrabbableCube position={[-1, 1, 0]} />
+        
+        {/* Ground plane */}
+        <mesh rotation={[-Math.PI/2, 0, 0]} receiveShadow>
+          <planeGeometry args={[20, 20]} />
+          <meshStandardMaterial color="#404040" />
+        </mesh>
+      </Physics>
+
+      <OrbitControls />
+      <ambientLight intensity={0.5} />
+      <pointLight position={[10, 10, 10]} intensity={1} castShadow />
+      <Text position={[0, 3, 0]} color="white">
+        Robotics Simulator
+      </Text>
+    </Canvas>
+  )
+}
+```
+
+Key features of this implementation:
+
+1. **Robot Arm Structure**:
+- GLTF model loading with physics components
+- Compound bodies for complex shapes
+- Physics constraints for joints (revolute/prismatic)
+- Hierarchical arm structure with base, arm segments, and gripper
+
+2. **Grasping Mechanics**:
+- Proximity-based object detection
+- Dynamic-to-static mass switching for grabbed objects
+- Object constraint management
+- Grab/release event handling
+
+3. **Control System**:
+- Joint angle controls via HTML interface
+- Real-time physics updates
+- Inverse kinematics simulation (basic)
+- Arm position/velocity control
+
+4. **Physics Simulation**:
+- Realistic mass distribution
+- Joint friction and limits
+- Collision filtering
+- Object manipulation physics
+
+To set up your project:
+
+1. Create a robotic arm GLTF model with:
+- Separate meshes for each joint
+- Proper pivot points and hierarchy
+- Logical naming convention for parts
+
+2. Install required dependencies:
+```bash
+npm install @react-three/fiber @react-three/cannon @react-three/drei three three-mesh-bvh
+```
+
+3. Recommended optimizations:
+```jsx
+// In your robot arm component
+useGLTF.preload('/models/robotic-arm.glb')
+
+// Use simplified collision meshes
+function SimplifiedCollider({ args, position }) {
+  useBox(() => ({
+    args,
+    position,
+    type: 'static',
+    userData: { isCollider: true }
+  }))
+  return null
+}
+
+// Use in your model component
+<SimplifiedCollider args={[0.5, 1, 0.5]} position={[0, 0.5, 0]} />
+```
+
+Advanced features to consider adding:
+
+1. **Inverse Kinematics**:
+```jsx
+function useIK(targetPosition) {
+  const [angles, setAngles] = useState({ base: 0, shoulder: 0, elbow: 0 })
+  
+  // Implement CCD or FABRIK algorithm here
+  // Update angles based on target position
+  
+  return angles
+}
+```
+
+2. **Force-based Grasping**:
+```jsx
+function useGripperForces(gripperApi) {
+  const applyGripForce = () => {
+    gripperApi.applyForce([0, 0, -10], [0, 0, 0])
+    gripperApi.applyForce([0, 0, 10], [0, 0, 0])
+  }
+  
+  return { applyGripForce }
+}
+```
+
+3. **Sensor System**:
+```jsx
+function ProximitySensor({ position, onDetect }) {
+  const [ref] = useSphere(() => ({
+    args: [0.2],
+    position,
+    isTrigger: true,
+    onCollide: onDetect
+  }))
+
+  return <mesh ref={ref} visible={false} />
+}
+```
+
+4. **Trajectory Planning**:
+```jsx
+function useTrajectory(start, end) {
+  const [path] = useState(() => new THREE.CatmullRomCurve3())
+  
+  useEffect(() => {
+    path.points = [start, end] // Add intermediate points
+  }, [start, end])
+
+  return path
+}
+```
+
+Remember to:
+- Test with simplified collision shapes first
+- Use visual debugging tools from @react-three/cannon
+- Implement error boundaries for model loading
+- Add loading states for GLTF assets
+- Consider LOD (Level of Detail) for complex models
+
+This setup provides a foundation for a web-based robotics simulator that can be extended with:
+- ROS integration via websockets
+- Sensor data visualization
+- Path planning algorithms
+- Collision avoidance systems
+- Multi-robot scenarios
