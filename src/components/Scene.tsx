@@ -1,8 +1,8 @@
-import { RobotArm1 } from './Gilberto_a_robot_arm1';
+import { RobotArm } from './RobotArm';
 const Scene = () => {
 	return (
 		<>
-			<RobotArm1 />
+			<RobotArm />
 		</>
 	);
 };
