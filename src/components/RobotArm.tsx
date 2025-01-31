@@ -26,6 +26,15 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 	let testRotBoneName = 'J_Claw_Base_Rot_07';
 	let testRotBone: THREE.Bone | undefined;
 
+	const setBoneLimits = (
+		bone: THREE.Bone,
+		limits: { min: THREE.Vector3; max: THREE.Vector3 }
+	) => {
+		bone.userData.rotationLimits = {
+			min: limits.min,
+			max: limits.max,
+		};
+	};
 	useEffect(() => {
 		const traverseBones = (bone: THREE.Bone) => {
 			console.log('Bone name:', bone.name);
@@ -54,8 +63,21 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 		}
 	}, [nodes]);
 
+	//TODO Set rotation limits for a bone
 	useFrame((state, delta) => {
 		if (testRotBone) {
+			// before rotating the bone, check if it has rotation limits
+			if (testRotBone.userData.rotationLimits) {
+				const { min, max } = testRotBone.userData.rotationLimits;
+				const newRot = testRotBone.rotation.clone();
+				newRot.x += 0.01;
+				if (newRot.x < min.x || newRot.x > max.x) {
+					console.log('Rotation limit reached');
+					return;
+				}
+			}
+			// Rotate the bone
+
 			testRotBone.rotateX(0.01);
 		}
 	});
