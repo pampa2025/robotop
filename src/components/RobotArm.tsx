@@ -5,7 +5,7 @@ Files: ./public/models/gilberto_a_robot_arm2.glb [585.86KB] > /Users/pampanie/de
 */
 
 import * as THREE from 'three';
-import { useMemo, useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useFrame, useGraph } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { GLTF, SkeletonUtils } from 'three-stdlib';
@@ -21,12 +21,39 @@ type GLTFResult = GLTF & {
 
 export function RobotArm(props: JSX.IntrinsicElements['group']) {
 	const { scene } = useGLTF('models/gilberto_a_robot_arm2-transformed.glb');
-	const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+	const clone = SkeletonUtils.clone(scene);
 	const { nodes, materials } = useGraph(clone) as GLTFResult;
 	const [targetPosition, setTargetPosition] = useState(
 		new THREE.Vector3(0, 0, 0)
 	);
-	const [bones, setBones] = useState<THREE.Bone[]>([]);
+	const bones = (() => {
+		const collectedBones: THREE.Bone[] = [];
+
+		if (nodes._rootJoint) {
+			const traverseBones = (bone: THREE.Bone) => {
+				collectedBones.push(bone);
+
+				if (bone.userData.rotationLimits) {
+					console.log(
+						'Rotation limits for',
+						bone.name,
+						':',
+						bone.userData.rotationLimits
+					);
+				}
+
+				bone.children.forEach((child) => {
+					if (child instanceof THREE.Bone) {
+						traverseBones(child);
+					}
+				});
+			};
+
+			traverseBones(nodes._rootJoint);
+		}
+
+		return collectedBones;
+	})();
 
 	const setBoneLimits = (
 		bone: THREE.Bone,
@@ -37,34 +64,6 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 			max: limits.max,
 		};
 	};
-
-	useEffect(() => {
-		const collectedBones: THREE.Bone[] = [];
-
-		const traverseBones = (bone: THREE.Bone) => {
-			collectedBones.push(bone);
-
-			if (bone.userData.rotationLimits) {
-				console.log(
-					'Rotation limits for',
-					bone.name,
-					':',
-					bone.userData.rotationLimits
-				);
-			}
-
-			bone.children.forEach((child) => {
-				if (child instanceof THREE.Bone) {
-					traverseBones(child);
-				}
-			});
-		};
-
-		if (nodes._rootJoint) {
-			traverseBones(nodes._rootJoint);
-			setBones(collectedBones);
-		}
-	}, [nodes]);
 
 	const computeBoneRotations = () => {
 		const MAX_ITERATIONS = 10;
