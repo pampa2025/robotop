@@ -63,13 +63,69 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 			min: limits.min,
 			max: limits.max,
 		};
-		console.log('Set rotation limits for', bone.name, ':', {
-			min: limits.min,
-			max: limits.max,
-		});
 	};
 
-	useFrame((_) => {});
+	const computeBoneRotations = () => {
+		const MAX_ITERATIONS = 10;
+		const TOLERANCE = 0.01;
+		const endEffector = bones[bones.length - 1];
+
+		for (let i = 0; i < MAX_ITERATIONS; i++) {
+			// Work backwards from end effector to root
+			for (let j = bones.length - 1; j >= 0; j--) {
+				const bone = bones[j];
+				const currentPosition = new THREE.Vector3();
+				endEffector.getWorldPosition(currentPosition);
+
+				const directionToTarget = targetPosition.clone().sub(currentPosition);
+				const directionToEndEffector = currentPosition
+					.clone()
+					.sub(bone.getWorldPosition(new THREE.Vector3()));
+
+				const axis = new THREE.Vector3()
+					.crossVectors(directionToEndEffector, directionToTarget)
+					.normalize();
+
+				const angle = directionToEndEffector.angleTo(directionToTarget);
+
+				// Apply rotation while respecting limits
+				if (bone.userData.rotationLimits) {
+					const { min, max } = bone.userData.rotationLimits;
+					const newRotation = bone.rotation.clone();
+					const rotationChange = new THREE.Vector3(
+						angle,
+						angle,
+						angle
+					).multiply(axis);
+					newRotation.set(
+						newRotation.x + rotationChange.x,
+						newRotation.y + rotationChange.y,
+						newRotation.z + rotationChange.z
+					);
+
+					// Clamp rotation to limits
+					newRotation.x = THREE.MathUtils.clamp(newRotation.x, min.x, max.x);
+					newRotation.y = THREE.MathUtils.clamp(newRotation.y, min.y, max.y);
+					newRotation.z = THREE.MathUtils.clamp(newRotation.z, min.z, max.z);
+
+					bone.rotation.copy(newRotation);
+				} else {
+					bone.rotateOnWorldAxis(axis, angle);
+				}
+			}
+
+			// Check if we've reached the target
+			const currentEndPosition = new THREE.Vector3();
+			endEffector.getWorldPosition(currentEndPosition);
+			if (currentEndPosition.distanceTo(targetPosition) < TOLERANCE) {
+				break;
+			}
+		}
+	};
+
+	useFrame((_) => {
+		computeBoneRotations();
+	});
 
 	return (
 		<group {...props} dispose={null} scale={[0.005, 0.005, 0.005]}>
@@ -78,26 +134,6 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 				geometry={nodes.Object_Mesh.geometry}
 				material={nodes.Object_Mesh.material}
 				skeleton={nodes.Object_Mesh.skeleton}
-				onClick={(e) => {
-					e.stopPropagation();
-					const clickPoint = e.point;
-					let closestBone: THREE.Bone | null = null;
-					let minDistance = Infinity;
-
-					bones.forEach((bone) => {
-						const boneWorldPos = new THREE.Vector3();
-						bone.getWorldPosition(boneWorldPos);
-						const distance = clickPoint.distanceTo(boneWorldPos);
-						if (distance < minDistance) {
-							minDistance = distance;
-							closestBone = bone;
-						}
-					});
-
-					if (closestBone) {
-						console.log('Clicked bone name:', (closestBone as THREE.Bone).name);
-					}
-				}}
 			/>
 		</group>
 	);
