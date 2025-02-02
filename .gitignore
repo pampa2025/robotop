@@ -130,3 +130,6 @@ dist
 .pnp.*
 .DS_Store
 public/models/db_robotarm_animate-transformed.glb
+
+
+*.blend1
