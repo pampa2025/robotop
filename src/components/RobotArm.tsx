@@ -84,7 +84,13 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 		console.log('Clicked on robot arm', event);
 	};
 
-	useFrame((_) => {});
+	useFrame((_) => {
+		const clawBone = bones.find((bone) => bone.name === 'J_Claw_Base_Rot_07');
+		// console.log('found bone', clawBone);
+		if (clawBone) {
+			clawBone.rotateX(0.01);
+		}
+	});
 
 	return (
 		<group

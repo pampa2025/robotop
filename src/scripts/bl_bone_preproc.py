@@ -117,3 +117,48 @@ print("Separation complete with proper bone naming!")
     'export_selected': True,
     'export_animations': False
 }
+
+
+# Okay, let's tackle this problem. The user mentioned that after running the script, some child bones are inheriting the parent bone's name in their separated meshes. That's not good because each mesh part should correspond to its specific bone.
+
+# First, I need to figure out why the child bones are getting the parent's name. The previous script might be incorrectly assigning the mesh names based on vertex groups that include multiple bones. Maybe when separating the mesh, vertices influenced by child bones are still part of the parent's vertex group, causing the parent's name to be used.
+
+# I should check how the script determines which bone name to use for each separated mesh. The script probably loops through each bone's vertex group, selects those vertices, and separates them. However, if a vertex is part of multiple groups(like parent and child bones), it might end up in the wrong mesh.
+
+# To fix this, I need to ensure that each vertex is only associated with one bone. The script should prioritize the most influential bone for each vertex. That way, when separating, each vertex belongs to exactly one bone's mesh.
+
+# I'll modify the script to clean up the vertex groups before separation. For each new mesh part, remove all vertex groups except the one with the highest weight influence on those vertices. This ensures that each mesh part is correctly named after its dominant bone.
+
+# Also, when naming the mesh objects, the script should check all vertex groups of the new object and find the one with the maximum average weight. That bone's name will be used for the mesh, preventing parent names from overriding child names.
+
+# Another consideration is the bone hierarchy. Child bones might have vertices that are also influenced by their parents. The script needs to handle weight painting properly, ensuring that vertices are assigned to the correct bone based on their primary influence.
+
+# Testing this approach in Blender, I can run the script on a test model where parent and child bones have overlapping vertex groups. After running, each separated mesh should have the correct bone name, even for child bones.
+
+
+# Key Improvements:
+
+# Primary Bone Detection: Uses vertex weight dominance to determine the true associated bone
+
+# Accurate Naming: Names meshes after the bone with highest average weight influence
+
+# Clean Vertex Groups: Removes all non-primary bone groups from each mesh part
+
+# Hierarchy Preservation: Maintains proper parent-child relationships through matrix parenting
+
+
+# Verification Steps in Blender:
+
+# Select a separated mesh part
+
+# Check:
+
+# Only 1 vertex group exists matching the mesh name
+
+# Vertex group weights are > 0 only for that bone
+
+# Armature modifier points to original armature
+
+# Transform hierarchy matches the bone's position
+
+# This version ensures child bones get their own mesh parts named correctly, even if they share vertices with parent bones in the original model.
