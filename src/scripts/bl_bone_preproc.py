@@ -1,73 +1,93 @@
 import bpy
 import bmesh
 
+
 def process_mesh(obj):
-    # Get armature modifier
+    # Apply transforms on original mesh
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
     armature_mod = next((mod for mod in obj.modifiers if mod.type == 'ARMATURE' and mod.object), None)
     if not armature_mod:
-        print(f"No valid armature modifier found on {obj.name}")
+        print(f"No armature found on {obj.name}")
         return
 
     armature = armature_mod.object
     bone_names = [bone.name for bone in armature.data.bones]
-    processed_groups = set()
 
-    # Make object active and enter edit mode
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.mode_set(mode='EDIT')
-    
-    # Create bmesh for selection checks
-    bm = bmesh.from_edit_mesh(obj.data)
-    bm.verts.ensure_lookup_table()
+    # Store original vertex groups
+    original_groups = {vg.name: vg.index for vg in obj.vertex_groups}
 
-    # Process each vertex group
-    for vg in obj.vertex_groups:
-        if vg.name not in bone_names:
-            continue
-
-        # Deselect all vertices
-        bpy.ops.mesh.select_all(action='DESELECT')
-        obj.vertex_groups.active = vg
-        
-        # Select vertices in this group
-        bpy.ops.object.vertex_group_select()
-        
-        # Check if any vertices are selected
-        selected_verts = [v for v in bm.verts if v.select]
-        if not selected_verts:
-            continue
-
-        # Separate selected vertices
-        bpy.ops.mesh.separate(type='SELECTED')
-        
-        # Exit to object mode to rename new object
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-        # Find and rename new object
-        new_objects = [o for o in bpy.context.selected_objects if o != obj]
-        for new_obj in new_objects:
-            new_obj.name = f"{vg.name}_MESH"
-            # Keep armature modifier
-            new_mod = new_obj.modifiers.new(name="Armature", type='ARMATURE')
-            new_mod.object = armature
-        
-        # Re-enter edit mode for further processing
-        bpy.context.view_layer.objects.active = obj
+    with bpy.context.temp_override(active_object=obj):
         bpy.ops.object.mode_set(mode='EDIT')
-        bm = bmesh.from_edit_mesh(obj.data)  # Refresh bmesh after separation
+        bm = bmesh.from_edit_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
 
-    # Cleanup
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    # Delete original mesh if empty
-    if len(obj.data.vertices) == 0:
-        bpy.data.objects.remove(obj, do_unlink=True)
-    else:
-        print(f"Original mesh {obj.name} has remaining vertices, not deleted")
+        for bone_name in bone_names:
+            if bone_name not in original_groups:
+                continue
 
-# Process all selected mesh objects
+            # Select vertices belonging to this bone
+            bpy.ops.mesh.select_all(action='DESELECT')
+            obj.vertex_groups.active_index = original_groups[bone_name]
+            bpy.ops.object.vertex_group_select()
+
+            # Check if any vertices selected
+            if not any(v.select for v in bm.verts):
+                continue
+
+            # Duplicate selection
+            bpy.ops.mesh.duplicate()
+            bpy.ops.mesh.separate(type='SELECTED')
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Process separated parts
+    separated_objects = [o for o in bpy.context.selected_objects if o != obj]
+    for new_obj in separated_objects:
+        # Cleanup vertex groups
+        groups_to_keep = []
+        for vg in new_obj.vertex_groups:
+            if vg.name in bone_names:
+                groups_to_keep.append(vg.name)
+
+        # Remove non-bone vertex groups
+        for vg in new_obj.vertex_groups:
+            if vg.name not in groups_to_keep:
+                new_obj.vertex_groups.remove(vg)
+
+        # Apply transforms and setup modifiers
+        bpy.context.view_layer.objects.active = new_obj
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+        # Add armature modifier
+        if not any(m for m in new_obj.modifiers if m.type == 'ARMATURE'):
+            mod = new_obj.modifiers.new(name="Armature", type='ARMATURE')
+            mod.object = armature
+
+        # Parent to armature with correct transform
+        new_obj.parent = armature
+        new_obj.matrix_parent_inverse = armature.matrix_world.inverted()
+
+    # Hide original mesh
+    obj.hide_set(True)
+    obj.hide_render = True
+
+
+# Process selected objects
 for obj in bpy.context.selected_objects:
     if obj.type == 'MESH':
         process_mesh(obj)
 
-print("Separation complete! Check your outliner for new mesh parts.")
+print("Processing complete! Bone hierarchy and transforms are now preserved.")
+
+
+# export gltf settings:
+{
+    'apply_modifiers': True,
+    'export_skins': True,
+    'export_bake_skins': False,
+    'export_yup': True,
+    'export_selected': True,
+    'export_animations': False
+}
