@@ -128,7 +128,14 @@ def process_mesh(obj):
         new_obj.matrix_parent_inverse = armature.matrix_world.inverted()
 
         # Create physics hitbox
-        create_hitbox(new_obj)
+        # Add armature modifier to hitbox and bind to bone
+        hitbox = create_hitbox(new_obj)
+        if primary_bone:
+            mod = hitbox.modifiers.new(name="Armature", type='ARMATURE')
+            mod.object = armature
+            bone_constraint = hitbox.constraints.new(type='CHILD_OF')
+            bone_constraint.target = armature
+            bone_constraint.subtarget = primary_bone
 
     # Hide original
     obj.hide_set(True)
