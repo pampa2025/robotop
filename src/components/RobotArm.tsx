@@ -32,8 +32,21 @@ type GLTFResult = GLTF & {
 };
 
 export function RobotArm(props: JSX.IntrinsicElements['group']) {
-	const { scene } = useGLTF('models/gilberto_a_robot_arm5-transformed.glb');
+	console.time('useGLTF load');
+	console.log('Starting model load...', Date.now());
+	const modelUrl = 'models/gilberto_a_robot_arm5-transformed.glb';
+	console.log('Loading model from:', modelUrl);
+	const { scene } = useGLTF(modelUrl);
+	console.log('Model loaded, starting processing...', Date.now());
+	console.timeEnd('useGLTF load');
+	console.log(
+		'Model URL:',
+		process.env.PUBLIC_URL + '/models/gilberto_a_robot_arm5-transformed.glb'
+	);
+	console.time('Scene clone');
 	const clone = SkeletonUtils.clone(scene);
+	console.timeEnd('Scene clone');
+	console.time('Bone processing');
 	const { nodes, materials } = useGraph(clone) as GLTFResult;
 	const [targetPosition, setTargetPosition] = useState(
 		new THREE.Vector3(0, 0, 0)
@@ -66,6 +79,7 @@ export function RobotArm(props: JSX.IntrinsicElements['group']) {
 
 		return collectedBones;
 	})();
+	console.timeEnd('Bone processing');
 
 	console.log('Bones:', bones);
 
